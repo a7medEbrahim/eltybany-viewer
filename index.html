@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>كشوف العملاء</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f5f6f8; --card:#ffffff; --text:#1b1f24; --muted:#6b7380; --line:#e3e6ea;
+  --brand:#0f766e; --brand-ink:#ffffff; --danger:#b42318; --danger-bg:#fdecea;
+  --ok:#067647; --ok-bg:#e7f6ec; --warn-bg:#fff6e0; --warn:#8a5a00;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0e1114; --card:#171b20; --text:#e8ebef; --muted:#9aa3ae; --line:#2a3037;
+    --brand:#2dd4bf; --brand-ink:#04201d; --danger:#ff8a80; --danger-bg:#3a1714;
+    --ok:#6ee7a8; --ok-bg:#0f2d1d; --warn-bg:#2f2610; --warn:#f5c86b;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0e1114; --card:#171b20; --text:#e8ebef; --muted:#9aa3ae; --line:#2a3037;
+  --brand:#2dd4bf; --brand-ink:#04201d; --danger:#ff8a80; --danger-bg:#3a1714;
+  --ok:#6ee7a8; --ok-bg:#0f2d1d; --warn-bg:#2f2610; --warn:#f5c86b;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--text);font-family:Cairo,Tahoma,sans-serif;font-size:15px;line-height:1.55}
+header{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--line);padding:10px 16px;display:flex;align-items:center;gap:10px}
+header h1{font-size:17px;margin:0;flex:1}
+header .src{font-size:12px;color:var(--muted)}
+main{max-width:760px;margin:0 auto;padding:14px 16px 60px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+.btn{appearance:none;border:0;border-radius:10px;padding:11px 14px;font:inherit;font-weight:600;cursor:pointer;background:var(--brand);color:var(--brand-ink);width:100%}
+.btn.ghost{background:transparent;color:var(--brand);border:1px solid var(--line);width:auto;padding:7px 12px}
+.btn + .btn{margin-top:8px}
+input[type=search],input[type=text]{width:100%;padding:11px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--text);font:inherit}
+.muted{color:var(--muted);font-size:13px}
+.tabs{display:flex;gap:6px;margin:4px 0 12px}
+.tabs button{flex:1;padding:9px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--text);font:inherit;font-weight:600;cursor:pointer}
+.tabs button.on{background:var(--brand);color:var(--brand-ink);border-color:var(--brand)}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px}
+.stat b{display:block;font-size:16px;font-variant-numeric:tabular-nums}
+.stat span{font-size:12px;color:var(--muted)}
+.list .row{display:flex;align-items:center;gap:10px;padding:11px 4px;border-bottom:1px solid var(--line);cursor:pointer}
+.list .row:last-child{border-bottom:0}
+.row .nm{flex:1;min-width:0}
+.row .nm div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .amt{text-align:left;font-variant-numeric:tabular-nums;font-weight:700}
+.pill{display:inline-block;font-size:11px;padding:1px 8px;border-radius:99px;font-weight:600}
+.pill.late{background:var(--danger-bg);color:var(--danger)}
+.pill.paid{background:var(--ok-bg);color:var(--ok)}
+.pill.pend{background:var(--warn-bg);color:var(--warn)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:7px 4px;border-bottom:1px solid var(--line);text-align:right;font-variant-numeric:tabular-nums}
+th{color:var(--muted);font-weight:600}
+.tbl{overflow-x:auto}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;font-size:14px}
+.kv span:nth-child(odd){color:var(--muted)}
+h2{font-size:16px;margin:0 0 8px}
+h3{font-size:15px;margin:0 0 6px}
+.files .row{cursor:pointer}
+.err{background:var(--danger-bg);color:var(--danger);border-radius:10px;padding:10px;margin-bottom:12px;display:none}
+details summary{cursor:pointer;color:var(--muted);font-size:13px}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<header>
+  <h1>كشوف العملاء</h1>
+  <span class="src" id="srcLabel"></span>
+  <button class="btn ghost hidden" id="btnClose">تغيير النسخة</button>
+</header>
+<main>
+  <div class="err" id="err"></div>
+
+  <!-- اختيار مصدر البيانات -->
+  <section id="viewSource">
+    <div class="card">
+      <h2>افتح نسخة احتياطية</h2>
+      <p class="muted">الموقع للقراءة فقط — الملف بيتفتح جوه المتصفح ومش بيترفع على أي سيرفر.</p>
+      <button class="btn" id="btnDrive">من Google Drive</button>
+      <button class="btn ghost" style="width:100%;margin-top:8px" id="btnLocal">من ملف على الجهاز (.db)</button>
+      <input type="file" id="fileInput" accept=".db,application/octet-stream" class="hidden">
+    </div>
+    <div class="card files hidden" id="driveFiles">
+      <h2 id="driveTitle">النسخ الاحتياطية على الدرايف</h2>
+      <button class="btn ghost hidden" id="driveBack" style="margin-bottom:6px">→ كل النسخ</button>
+      <div class="list" id="driveList"></div>
+    </div>
+    <div class="card">
+      <details id="cfgBox">
+        <summary>إعدادات Google (مرة واحدة)</summary>
+        <p class="muted">حط الـ OAuth Client ID بتاع مشروع Google Cloud.</p>
+        <input type="text" id="cfgClientId" placeholder="xxxxxxxx.apps.googleusercontent.com" dir="ltr">
+        <button class="btn" style="margin-top:8px" id="btnSaveCfg">حفظ</button>
+      </details>
+    </div>
+  </section>
+
+  <!-- العملاء -->
+  <section id="viewMain" class="hidden">
+    <div class="stats" id="stats"></div>
+    <div class="tabs">
+      <button data-tab="customers" class="on">العملاء</button>
+      <button data-tab="overdue">المتأخرات</button>
+    </div>
+    <div class="card">
+      <input type="search" id="q" placeholder="بحث بالاسم أو الكود أو الموبايل…">
+      <div class="list" id="list" style="margin-top:6px"></div>
+    </div>
+  </section>
+
+  <!-- كشف عميل -->
+  <section id="viewCustomer" class="hidden">
+    <button class="btn ghost" id="btnBack" style="margin-bottom:10px">→ رجوع</button>
+    <div id="custBody"></div>
+  </section>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
+<script>
+(() => {
+const $ = id => document.getElementById(id);
+const SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
+let SQL = null, db = null, token = null, driveFilesCache = [], tab = 'customers';
+let customers = [];
+
+const ls = {
+  get(k){ try { return localStorage.getItem(k); } catch { return null; } },
+  set(k,v){ try { localStorage.setItem(k,v); } catch {} },
+};
+
+function showErr(msg){ const e=$('err'); e.textContent=msg; e.style.display=msg?'block':'none'; }
+const fmt = n => (Math.round((+n||0)*100)/100).toLocaleString('ar-EG',{maximumFractionDigits:2});
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const d10 = s => s ? String(s).slice(0,10) : '';
+const norm = s => String(s ?? '').toLowerCase()
+  .replace(/[أإآٱ]/g,'ا').replace(/ة/g,'ه').replace(/ى/g,'ي')
+  .replace(/[ً-ْـ]/g,'').replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d));
+
+function q(sql, params=[]){
+  const st = db.prepare(sql); st.bind(params);
+  const out = []; while (st.step()) out.push(st.getAsObject()); st.free();
+  return out;
+}
+function hasCol(table, col){
+  return q(`PRAGMA table_info(${table})`).some(r => r.name === col);
+}
+
+async function loadSql(){
+  if (SQL) return SQL;
+  SQL = await initSqlJs({ locateFile: f => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${f}` });
+  return SQL;
+}
+
+async function openBytes(bytes, label){
+  showErr('');
+  try {
+    await loadSql();
+    if (db) db.close();
+    db = new SQL.Database(new Uint8Array(bytes));
+    q("SELECT 1 FROM customers LIMIT 1");
+  } catch (e) {
+    db = null;
+    showErr('الملف ده مش نسخة صالحة من البرنامج: ' + (e.message || e));
+    return;
+  }
+  $('srcLabel').textContent = label;
+  $('btnClose').classList.remove('hidden');
+  loadCustomers();
+  show('viewMain');
+}
+
+function show(id){
+  for (const v of ['viewSource','viewMain','viewCustomer']) $(v).classList.toggle('hidden', v !== id);
+  window.scrollTo(0,0);
+}
+
+// ---------- البيانات ----------
+function loadCustomers(){
+  const archived = hasCol('customers','archived') ? 'COALESCE(c.archived,0)=0' : '1=1';
+  customers = q(`
+    SELECT c.id, c.name, c.code, c.phone,
+      COALESCE((SELECT SUM(COALESCE(ip.total_amount,0) - COALESCE(ip.down_payment,0)
+        - COALESCE((SELECT SUM(amount) FROM payments WHERE plan_id=ip.id AND status='paid'),0))
+        FROM installment_plans ip WHERE ip.customer_id=c.id),0) AS remaining,
+      COALESCE((SELECT SUM(p.amount) FROM payments p JOIN installment_plans ip ON ip.id=p.plan_id
+        WHERE ip.customer_id=c.id AND p.status='pending' AND p.due_date < date('now') AND ip.status='active'),0) AS late,
+      (SELECT MIN(p.due_date) FROM payments p JOIN installment_plans ip ON ip.id=p.plan_id
+        WHERE ip.customer_id=c.id AND p.status='pending' AND p.due_date < date('now') AND ip.status='active') AS late_since,
+      (SELECT COUNT(*) FROM installment_plans ip WHERE ip.customer_id=c.id) AS plans
+    FROM customers c WHERE ${archived}
+    ORDER BY c.name COLLATE NOCASE`);
+  for (const c of customers) c._k = norm(`${c.name} ${c.code} ${c.phone}`);
+  const tot = customers.reduce((a,c)=>{a.r+=c.remaining;a.l+=c.late;if(c.late>0)a.n++;return a;},{r:0,l:0,n:0});
+  $('stats').innerHTML = `
+    <div class="stat"><span>العملاء</span><b>${fmt(customers.length)}</b></div>
+    <div class="stat"><span>إجمالي المتبقي</span><b>${fmt(tot.r)}</b></div>
+    <div class="stat"><span>متأخرات (${fmt(tot.n)})</span><b style="color:var(--danger)">${fmt(tot.l)}</b></div>`;
+  renderList();
+}
+
+function renderList(){
+  const term = norm($('q').value.trim());
+  let rows = customers.filter(c => !term || c._k.includes(term));
+  if (tab === 'overdue') rows = rows.filter(c => c.late > 0).sort((a,b)=>b.late-a.late);
+  if (!rows.length){ $('list').innerHTML = '<p class="muted">مفيش نتايج.</p>'; return; }
+  $('list').innerHTML = rows.slice(0,400).map(c => `
+    <div class="row" data-id="${c.id}">
+      <div class="nm">
+        <div><b>${esc(c.name)}</b> ${c.code ? `<span class="muted">#${esc(c.code)}</span>` : ''}</div>
+        <div class="muted">${c.phone ? esc(c.phone)+' · ' : ''}${fmt(c.plans)} عقد
+          ${c.late > 0 ? ` · <span class="pill late">متأخر من ${esc(d10(c.late_since))}</span>` : ''}</div>
+      </div>
+      <div class="amt">${tab==='overdue'
+        ? `<span style="color:var(--danger)">${fmt(c.late)}</span>`
+        : fmt(c.remaining)}<div class="muted" style="font-weight:400">${tab==='overdue'?'متأخر':'متبقي'}</div></div>
+    </div>`).join('') + (rows.length > 400 ? `<p class="muted">بيظهر أول 400 — استخدم البحث.</p>` : '');
+}
+
+function openCustomer(id){
+  const c = q('SELECT * FROM customers WHERE id=?',[id])[0];
+  if (!c) return;
+  const pageCol = hasCol('installment_plans','page_number') ? 'ip.page_number' : 'NULL';
+  const plans = q(`
+    SELECT ip.*, ${pageCol} AS page_no, s.name AS supplier_name,
+      (COALESCE(ip.down_payment,0) + COALESCE((SELECT SUM(amount) FROM payments WHERE plan_id=ip.id AND status='paid'),0)) AS paid_total,
+      (COALESCE(ip.total_amount,0) - COALESCE(ip.down_payment,0) - COALESCE((SELECT SUM(amount) FROM payments WHERE plan_id=ip.id AND status='paid'),0)) AS remaining,
+      COALESCE((SELECT SUM(amount) FROM payments WHERE plan_id=ip.id AND status='pending' AND due_date < date('now')),0) AS late,
+      (SELECT MIN(due_date) FROM payments WHERE plan_id=ip.id AND status='pending') AS next_due
+    FROM installment_plans ip LEFT JOIN suppliers s ON s.id=ip.supplier_id
+    WHERE ip.customer_id=? ORDER BY ip.start_date DESC, ip.id DESC`, [id]);
+  const pays = q(`SELECT * FROM payments WHERE plan_id IN (SELECT id FROM installment_plans WHERE customer_id=?)
+    ORDER BY due_date ASC, id ASC`, [id]);
+  const byPlan = {};
+  for (const p of pays) (byPlan[p.plan_id] ||= []).push(p);
+  const today = q("SELECT date('now') AS d")[0].d;
+
+  const T = plans.reduce((a,p)=>{a.t+=+p.total_amount||0;a.p+=p.paid_total;a.r+=p.remaining;a.l+=p.status==='active'?p.late:0;return a;},{t:0,p:0,r:0,l:0});
+  const statusAr = s => ({active:'ساري',completed:'منتهي',closed:'منتهي',cancelled:'ملغي',archived:'مؤرشف'}[s] || s || '');
+
+  $('custBody').innerHTML = `
+    <div class="card">
+      <h2>${esc(c.name)} ${c.code ? `<span class="muted">#${esc(c.code)}</span>`:''}</h2>
+      <div class="kv">
+        ${c.phone ? `<span>الموبايل</span><span><a href="tel:${esc(c.phone)}" style="color:var(--brand)">${esc(c.phone)}</a></span>`:''}
+        ${c.national_id ? `<span>الرقم القومي</span><span>${esc(c.national_id)}</span>`:''}
+        ${c.address ? `<span>العنوان</span><span>${esc(c.address)}</span>`:''}
+        ${c.guarantor ? `<span>الضامن</span><span>${esc(c.guarantor)}</span>`:''}
+      </div>
+    </div>
+    <div class="stats" style="grid-template-columns:repeat(2,1fr)">
+      <div class="stat"><span>إجمالي العقود</span><b>${fmt(T.t)}</b></div>
+      <div class="stat"><span>المدفوع (بالمقدم)</span><b style="color:var(--ok)">${fmt(T.p)}</b></div>
+      <div class="stat"><span>المتبقي</span><b>${fmt(T.r)}</b></div>
+      <div class="stat"><span>المتأخر</span><b style="color:var(--danger)">${fmt(T.l)}</b></div>
+    </div>
+    ${plans.length ? plans.map(p => {
+      const ps = byPlan[p.id] || [];
+      return `<div class="card">
+        <h3>${esc(p.note || 'تقسيط')} ${p.page_no ? `<span class="muted">· صفحة ${esc(p.page_no)}</span>`:''}</h3>
+        <div class="kv" style="margin-bottom:8px">
+          <span>الحالة</span><span>${esc(statusAr(p.status))}</span>
+          <span>تاريخ البداية</span><span>${esc(d10(p.start_date))}</span>
+          <span>الإجمالي</span><span>${fmt(p.total_amount)}</span>
+          <span>المقدم</span><span>${fmt(p.down_payment)}</span>
+          <span>المدفوع</span><span>${fmt(p.paid_total)}</span>
+          <span>المتبقي</span><span><b>${fmt(p.remaining)}</b></span>
+          ${p.late > 0 && p.status==='active' ? `<span>المتأخر</span><span style="color:var(--danger)"><b>${fmt(p.late)}</b></span>`:''}
+          ${p.next_due ? `<span>القسط الجاي</span><span>${esc(d10(p.next_due))}</span>`:''}
+          ${p.supplier_name ? `<span>المورد</span><span>${esc(p.supplier_name)}</span>`:''}
+        </div>
+        <details ${p.late > 0 ? 'open':''}>
+          <summary>الأقساط (${fmt(ps.length)})</summary>
+          <div class="tbl"><table>
+            <thead><tr><th>الاستحقاق</th><th>المبلغ</th><th>الحالة</th><th>تاريخ الدفع</th></tr></thead>
+            <tbody>${ps.map(x => {
+              const late = x.status !== 'paid' && d10(x.due_date) < today;
+              const pill = x.status === 'paid' ? '<span class="pill paid">مدفوع</span>'
+                : late ? '<span class="pill late">متأخر</span>' : '<span class="pill pend">مستحق</span>';
+              return `<tr><td>${esc(d10(x.due_date))}</td><td>${fmt(x.amount)}${+x.late_fee ? `<div class="muted">+غرامة ${fmt(x.late_fee)}</div>`:''}</td>
+                <td>${pill}</td><td>${esc(d10(x.paid_date))}</td></tr>`;
+            }).join('')}</tbody>
+          </table></div>
+        </details>
+      </div>`;
+    }).join('') : '<div class="card muted">مفيش عقود للعميل ده.</div>'}`;
+  show('viewCustomer');
+}
+
+// ---------- Google Drive ----------
+function getToken(){
+  return new Promise((resolve, reject) => {
+    const clientId = ls.get('gClientId');
+    if (!clientId){ $('cfgBox').open = true; reject(new Error('حط الـ Client ID في الإعدادات الأول.')); return; }
+    if (!window.google?.accounts?.oauth2){ reject(new Error('مكتبة جوجل لسه بتحمّل، جرّب تاني.')); return; }
+    const tc = google.accounts.oauth2.initTokenClient({
+      client_id: clientId, scope: SCOPE,
+      callback: r => r.error ? reject(new Error(r.error)) : resolve(r.access_token),
+      error_callback: e => reject(new Error(e.message || e.type || 'تم الإلغاء')),
+    });
+    tc.requestAccessToken();
+  });
+}
+async function gfetch(url){
+  const r = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
+  if (r.status === 401){ token = null; throw new Error('انتهت الجلسة، اضغط Google Drive تاني.'); }
+  if (!r.ok) throw new Error('Drive: ' + r.status);
+  return r;
+}
+const API = 'https://www.googleapis.com/drive/v3/files';
+async function dlist(query, fields='files(id,name,modifiedTime,size,parents)', extra={}){
+  const qs = new URLSearchParams({ q: query, fields, pageSize: '200', orderBy: 'modifiedTime desc',
+    includeItemsFromAllDrives: 'true', supportsAllDrives: 'true', ...extra });
+  return ((await (await gfetch(API + '?' + qs)).json()).files) || [];
+}
+async function child(parentId, name){
+  const qn = name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  return (await dlist(`'${parentId}' in parents and name = '${qn}' and trashed = false`))[0] || null;
+}
+function driveMsg(t){ $('driveList').innerHTML = `<p class="muted">${esc(t)}</p>`; }
+
+// 1) كل فولدرات النسخ (أي فولدر فيه manifest.json)
+async function listDrive(){
+  showErr('');
+  try {
+    if (!token) token = await getToken();
+    $('driveFiles').classList.remove('hidden');
+    $('driveBack').classList.add('hidden');
+    $('driveTitle').textContent = 'النسخ الاحتياطية على الدرايف';
+    driveMsg('جاري البحث…');
+    const mans = await dlist("name = 'manifest.json' and trashed = false");
+    const bundles = [];
+    await Promise.all(mans.map(async m => {
+      const pid = (m.parents||[])[0]; if (!pid) return;
+      try {
+        const f = await (await gfetch(`${API}/${encodeURIComponent(pid)}?fields=id,name&supportsAllDrives=true`)).json();
+        bundles.push({ id: f.id, name: f.name, manifestId: m.id, time: m.modifiedTime });
+      } catch {}
+    }));
+    bundles.sort((a,b) => b.time.localeCompare(a.time));
+    driveFilesCache = bundles;
+    if (!bundles.length){ driveMsg('مفيش فولدرات نسخ (Eltybany_…) على الدرايف ده.'); return; }
+    $('driveList').innerHTML = bundles.map((b,i) => `
+      <div class="row" data-bundle="${i}">
+        <div class="nm"><div><b>📁 ${esc(b.name)}</b> ${i===0 ? '<span class="pill paid">الأحدث</span>':''}</div>
+        <div class="muted">${new Date(b.time).toLocaleString('ar-EG')}</div></div>
+      </div>`).join('');
+  } catch (e) { showErr(e.message || String(e)); }
+}
+
+// 2) اختيار المساحة من manifest.json
+async function openBundle(b){
+  showErr('');
+  try {
+    driveMsg('جاري قراءة النسخة…');
+    $('driveBack').classList.remove('hidden');
+    $('driveTitle').textContent = b.name;
+    const man = await (await gfetch(`${API}/${encodeURIComponent(b.manifestId)}?alt=media&supportsAllDrives=true`)).json();
+    const profs = man.profiles || [];
+    if (!profs.length){ driveMsg('النسخة دي مفيهاش مساحات.'); return; }
+    if (profs.length === 1) return openProfile(b, profs[0]);
+    $('driveList').innerHTML = '<p class="muted">اختار المساحة:</p>' + profs.map((p,i) => `
+      <div class="row" data-prof="${i}">
+        <div class="nm"><div><b>${esc(p.name)}</b> ${p.isPrimary ? '<span class="pill paid">الأساسية</span>':''}</div></div>
+      </div>`).join('');
+    $('driveList').onclick = e => {
+      const r = e.target.closest('[data-prof]'); if (r) openProfile(b, profs[+r.dataset.prof]);
+    };
+  } catch (e) { showErr(e.message || String(e)); }
+}
+
+// 3) data/profiles/<id>/eltybany.db
+async function openProfile(b, prof){
+  showErr('');
+  try {
+    driveMsg(`جاري تحميل «${prof.name}»…`);
+    let node = { id: b.id };
+    for (const part of ['data','profiles', prof.id, 'eltybany.db']) {
+      node = await child(node.id, part);
+      if (!node) throw new Error(`مش لاقي ${part} جوه النسخة — ممكن الدرايف لسه بيرفعها.`);
+    }
+    const buf = await (await gfetch(`${API}/${encodeURIComponent(node.id)}?alt=media&supportsAllDrives=true`)).arrayBuffer();
+    await openBytes(buf, `${prof.name} · ${b.name.replace(/^Eltybany_\w+?_/,'')}`);
+  } catch (e) { showErr(e.message || String(e)); }
+  finally { $('driveList').onclick = driveListClick; }
+}
+function driveListClick(e){
+  const r = e.target.closest('[data-bundle]'); if (r) openBundle(driveFilesCache[+r.dataset.bundle]);
+}
+// ---------- الأحداث ----------
+$('btnLocal').onclick = () => $('fileInput').click();
+$('fileInput').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  await openBytes(await f.arrayBuffer(), f.name);
+  e.target.value = '';
+};
+$('btnDrive').onclick = listDrive;
+$('driveList').onclick = driveListClick;
+$('driveBack').onclick = listDrive;
+$('cfgClientId').value = ls.get('gClientId') || '';
+$('btnSaveCfg').onclick = () => { ls.set('gClientId', $('cfgClientId').value.trim()); $('cfgBox').open = false; showErr(''); };
+$('q').oninput = renderList;
+$('list').onclick = e => { const r = e.target.closest('[data-id]'); if (r) openCustomer(+r.dataset.id); };
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x===b));
+  tab = b.dataset.tab; renderList();
+});
+$('btnBack').onclick = () => show('viewMain');
+$('btnClose').onclick = () => { show('viewSource'); };
+})();
+</script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+</body>
+</html>
