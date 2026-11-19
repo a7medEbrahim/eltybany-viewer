@@ -65,14 +65,34 @@ h3{font-size:15px;margin:0 0 6px}
 .err{background:var(--danger-bg);color:var(--danger);border-radius:10px;padding:10px;margin-bottom:12px;display:none}
 details summary{cursor:pointer;color:var(--muted);font-size:13px}
 .hidden{display:none!important}
+.mask{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:19}
+.drawer{position:fixed;top:0;bottom:0;right:0;width:min(300px,85vw);background:var(--card);border-left:1px solid var(--line);
+  transform:translateX(100%);visibility:hidden;transition:transform .2s ease,visibility .2s;z-index:20;padding:16px;overflow:auto}
+.drawer.open{transform:none;visibility:visible}
+html,body{overflow-x:hidden}
+.dItem{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;cursor:pointer}
+.dItem.on{border-color:var(--brand);background:var(--ok-bg)}
 </style>
 </head>
 <body>
 <header>
   <h1>كشوف العملاء</h1>
   <span class="src" id="srcLabel"></span>
-  <button class="btn ghost hidden" id="btnClose">تغيير النسخة</button>
+  <button class="btn ghost hidden" id="btnMenu" aria-label="المساحات والنسخ" style="font-size:18px;line-height:1;padding:6px 11px">☰</button>
 </header>
+<div id="drawerMask" class="mask hidden"></div>
+<aside id="drawer" class="drawer" aria-label="المساحات">
+  <div style="display:flex;align-items:center;margin-bottom:10px">
+    <h2 style="flex:1;margin:0">النسخة المفتوحة</h2>
+    <button class="btn ghost" id="drawerClose" aria-label="إغلاق">✕</button>
+  </div>
+  <div class="muted" id="drawerBundle"></div>
+  <div id="drawerProfilesWrap">
+    <h3 style="margin-top:16px">المساحات</h3>
+    <div id="drawerProfiles"></div>
+  </div>
+  <button class="btn ghost" id="drawerChange" style="width:100%;margin-top:16px">تغيير النسخة</button>
+</aside>
 <main>
   <div class="err" id="err"></div>
 
@@ -120,6 +140,7 @@ const SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
 // OAuth Client ID (عام — مش سر).
 const DEFAULT_CLIENT_ID = '1256770468-7065c238skc7b4s96n3l9bmuh5ghmvka.apps.googleusercontent.com';
 let SQL = null, db = null, token = null, driveFilesCache = [], tab = 'customers';
+let cur = null; // { bundle, profiles, profId, cache: {profId: ArrayBuffer} }
 let customers = [];
 
 const ls = {
@@ -163,7 +184,7 @@ async function openBytes(bytes, label){
     return;
   }
   $('srcLabel').textContent = label;
-  $('btnClose').classList.remove('hidden');
+  $('btnMenu').classList.remove('hidden');
   loadCustomers();
   show('viewMain');
 }
@@ -397,42 +418,72 @@ async function listDrive(){
   } catch (e) { showErr(e.message || String(e)); }
 }
 
-// 2) اختيار المساحة من manifest.json
+// 2) النسخة: نقرأ manifest.json ونفتح الأساسية على طول، والباقي في الـ Drawer
 async function openBundle(b){
   showErr('');
   try {
     driveMsg('جاري قراءة النسخة…');
-    $('driveBack').classList.remove('hidden');
-    $('driveTitle').textContent = b.name;
     const man = await (await gfetch(`${API}/${encodeURIComponent(b.manifestId)}?alt=media&supportsAllDrives=true`)).json();
     const profs = man.profiles || [];
     if (!profs.length){ driveMsg('النسخة دي مفيهاش مساحات.'); return; }
-    if (profs.length === 1) return openProfile(b, profs[0]);
-    $('driveList').innerHTML = '<p class="muted">اختار المساحة:</p>' + profs.map((p,i) => `
-      <div class="row" data-prof="${i}">
-        <div class="nm"><div><b>${esc(p.name)}</b> ${p.isPrimary ? '<span class="pill paid">الأساسية</span>':''}</div></div>
-      </div>`).join('');
-    $('driveList').onclick = e => {
-      const r = e.target.closest('[data-prof]'); if (r) openProfile(b, profs[+r.dataset.prof]);
-    };
+    cur = { bundle: b, profiles: profs, profId: null, cache: {} };
+    const first = profs.find(p => p.isPrimary) || profs[0];
+    await openProfile(first);
   } catch (e) { showErr(e.message || String(e)); }
 }
 
-// 3) data/profiles/<id>/eltybany.db
-async function openProfile(b, prof){
+// 3) data/profiles/<id>/eltybany.db (بيتحفظ في الذاكرة عشان التبديل يبقى فوري)
+async function openProfile(prof){
+  if (!cur) return;
   showErr('');
+  const b = cur.bundle;
   try {
-    driveMsg(`جاري تحميل «${prof.name}»…`);
-    let node = { id: b.id };
-    for (const part of ['data','profiles', prof.id, 'eltybany.db']) {
-      node = await child(node.id, part);
-      if (!node) throw new Error(`مش لاقي ${part} جوه النسخة — ممكن الدرايف لسه بيرفعها.`);
+    let buf = cur.cache[prof.id];
+    if (!buf) {
+      setLoading(prof.id, true);
+      if (!db) driveMsg(`جاري تحميل «${prof.name}»…`);
+      let node = { id: b.id };
+      for (const part of ['data','profiles', prof.id, 'eltybany.db']) {
+        node = await child(node.id, part);
+        if (!node) throw new Error(`مش لاقي ${part} جوه النسخة — ممكن الدرايف لسه بيرفعها.`);
+      }
+      buf = await (await gfetch(`${API}/${encodeURIComponent(node.id)}?alt=media&supportsAllDrives=true`)).arrayBuffer();
+      cur.cache[prof.id] = buf;
     }
-    const buf = await (await gfetch(`${API}/${encodeURIComponent(node.id)}?alt=media&supportsAllDrives=true`)).arrayBuffer();
-    await openBytes(buf, `${prof.name} · ${b.name.replace(/^Eltybany_\w+?_/,'')}`);
+    cur.profId = prof.id;
+    await openBytes(buf, prof.name);
+    closeDrawer();
   } catch (e) { showErr(e.message || String(e)); }
-  finally { $('driveList').onclick = driveListClick; }
+  finally { setLoading(prof.id, false); renderDrawer(); $('driveList').onclick = driveListClick; }
 }
+
+// ---------- الـ Drawer ----------
+function bundleDate(name){
+  const m = String(name).match(/(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})/);
+  return m ? `${m[3]}/${m[2]}/${m[1]} — ${m[4]}:${m[5]}` : name;
+}
+function setLoading(id, on){
+  const el = document.querySelector(`#drawerProfiles [data-pid="${CSS.escape(id)}"] .ld`);
+  if (el) el.textContent = on ? 'جاري التحميل…' : '';
+}
+function renderDrawer(){
+  if (!cur) {
+    $('drawerBundle').textContent = $('srcLabel').textContent || '';
+    $('drawerProfilesWrap').classList.add('hidden');
+    return;
+  }
+  $('drawerProfilesWrap').classList.remove('hidden');
+  $('drawerBundle').textContent = bundleDate(cur.bundle.name);
+  $('drawerProfiles').innerHTML = cur.profiles.map(p => `
+    <div class="dItem ${p.id === cur.profId ? 'on' : ''}" data-pid="${esc(p.id)}">
+      <b>${esc(p.name)}</b>
+      ${p.isPrimary && p.name !== 'الأساسية' ? '<span class="pill paid">الأساسية</span>' : ''}
+      ${cur.cache[p.id] && p.id !== cur.profId ? '<span class="muted" style="font-size:11px">محمّلة</span>' : ''}
+      <span class="ld muted" style="font-size:11px"></span>
+    </div>`).join('');
+}
+function openDrawer(){ renderDrawer(); $('drawer').classList.add('open'); $('drawerMask').classList.remove('hidden'); }
+function closeDrawer(){ $('drawer').classList.remove('open'); $('drawerMask').classList.add('hidden'); }
 function driveListClick(e){
   const r = e.target.closest('[data-bundle]'); if (r) openBundle(driveFilesCache[+r.dataset.bundle]);
 }
@@ -440,6 +491,7 @@ function driveListClick(e){
 $('btnLocal').onclick = () => $('fileInput').click();
 $('fileInput').onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
+  cur = null; closeDrawer();
   await openBytes(await f.arrayBuffer(), f.name);
   e.target.value = '';
 };
@@ -453,7 +505,16 @@ document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
   tab = b.dataset.tab; renderList();
 });
 $('btnBack').onclick = () => show('viewMain');
-$('btnClose').onclick = () => { show('viewSource'); };
+$('btnMenu').onclick = openDrawer;
+$('drawerMask').onclick = closeDrawer;
+$('drawerClose').onclick = closeDrawer;
+$('drawerProfiles').onclick = e => {
+  const r = e.target.closest('[data-pid]'); if (!r || !cur) return;
+  const p = cur.profiles.find(x => x.id === r.dataset.pid);
+  if (p.id === cur.profId) { closeDrawer(); return; }
+  openProfile(p);
+};
+$('drawerChange').onclick = () => { closeDrawer(); show('viewSource'); if (token) listDrive(); };
 })();
 </script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
