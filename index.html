@@ -125,6 +125,8 @@ details summary{cursor:pointer;color:var(--muted);font-size:13px}
 (() => {
 const $ = id => document.getElementById(id);
 const SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
+// OAuth Client ID (عام — مش سر). ممكن يتغيّر من «إعدادات Google» في الصفحة.
+const DEFAULT_CLIENT_ID = '1256770468-7065c238skc7b4s96n3l9bmuh5ghmvka.apps.googleusercontent.com';
 let SQL = null, db = null, token = null, driveFilesCache = [], tab = 'customers';
 let customers = [];
 
@@ -294,7 +296,7 @@ function openCustomer(id){
 // ---------- Google Drive ----------
 function getToken(){
   return new Promise((resolve, reject) => {
-    const clientId = ls.get('gClientId');
+    const clientId = ls.get('gClientId') || DEFAULT_CLIENT_ID;
     if (!clientId){ $('cfgBox').open = true; reject(new Error('حط الـ Client ID في الإعدادات الأول.')); return; }
     if (!window.google?.accounts?.oauth2){ reject(new Error('مكتبة جوجل لسه بتحمّل، جرّب تاني.')); return; }
     const tc = google.accounts.oauth2.initTokenClient({
@@ -401,7 +403,7 @@ $('fileInput').onchange = async e => {
 $('btnDrive').onclick = listDrive;
 $('driveList').onclick = driveListClick;
 $('driveBack').onclick = listDrive;
-$('cfgClientId').value = ls.get('gClientId') || '';
+$('cfgClientId').value = ls.get('gClientId') || DEFAULT_CLIENT_ID;
 $('btnSaveCfg').onclick = () => { ls.set('gClientId', $('cfgClientId').value.trim()); $('cfgBox').open = false; showErr(''); };
 $('q').oninput = renderList;
 $('list').onclick = e => { const r = e.target.closest('[data-id]'); if (r) openCustomer(+r.dataset.id); };
