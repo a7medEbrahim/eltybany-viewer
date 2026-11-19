@@ -90,14 +90,6 @@ details summary{cursor:pointer;color:var(--muted);font-size:13px}
       <button class="btn ghost hidden" id="driveBack" style="margin-bottom:6px">→ كل النسخ</button>
       <div class="list" id="driveList"></div>
     </div>
-    <div class="card">
-      <details id="cfgBox">
-        <summary>إعدادات Google (مرة واحدة)</summary>
-        <p class="muted">حط الـ OAuth Client ID بتاع مشروع Google Cloud.</p>
-        <input type="text" id="cfgClientId" placeholder="xxxxxxxx.apps.googleusercontent.com" dir="ltr">
-        <button class="btn" style="margin-top:8px" id="btnSaveCfg">حفظ</button>
-      </details>
-    </div>
   </section>
 
   <!-- العملاء -->
@@ -125,7 +117,7 @@ details summary{cursor:pointer;color:var(--muted);font-size:13px}
 (() => {
 const $ = id => document.getElementById(id);
 const SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
-// OAuth Client ID (عام — مش سر). ممكن يتغيّر من «إعدادات Google» في الصفحة.
+// OAuth Client ID (عام — مش سر).
 const DEFAULT_CLIENT_ID = '1256770468-7065c238skc7b4s96n3l9bmuh5ghmvka.apps.googleusercontent.com';
 let SQL = null, db = null, token = null, driveFilesCache = [], tab = 'customers';
 let customers = [];
@@ -253,6 +245,10 @@ function openCustomer(id){
         ${c.address ? `<span>العنوان</span><span>${esc(c.address)}</span>`:''}
         ${c.guarantor ? `<span>الضامن</span><span>${esc(c.guarantor)}</span>`:''}
       </div>
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button class="btn" id="btnShare" style="flex:1">مشاركة الكشف</button>
+        ${waPhone(c.phone) ? `<button class="btn" id="btnWa" style="flex:1;background:#25D366;color:#fff">واتساب للعميل</button>` : ''}
+      </div>
     </div>
     <div class="stats" style="grid-template-columns:repeat(2,1fr)">
       <div class="stat"><span>إجمالي العقود</span><b>${fmt(T.t)}</b></div>
@@ -290,14 +286,61 @@ function openCustomer(id){
         </details>
       </div>`;
     }).join('') : '<div class="card muted">مفيش عقود للعميل ده.</div>'}`;
+
+  const text = statementText(c, plans, byPlan, T, today);
+  $('btnShare').onclick = () => shareText(text, `كشف حساب ${c.name}`);
+  if ($('btnWa')) $('btnWa').onclick = () =>
+    window.open(`https://wa.me/${waPhone(c.phone)}?text=${encodeURIComponent(text)}`, '_blank');
   show('viewCustomer');
+}
+
+// رقم مصري زي 01012345678 → 201012345678
+function waPhone(phone){
+  let d = String(phone ?? '').replace(/[٠-٩]/g, x => '٠١٢٣٤٥٦٧٨٩'.indexOf(x)).replace(/\D/g, '');
+  if (d.startsWith('00')) d = d.slice(2);
+  if (/^01\d{9}$/.test(d)) d = '2' + d;
+  return d.length >= 11 ? d : '';
+}
+
+function statementText(c, plans, byPlan, T, today){
+  const n = v => (Math.round((+v||0)*100)/100).toLocaleString('en-US',{maximumFractionDigits:2});
+  const L = [];
+  L.push(`📄 كشف حساب: ${c.name}${c.code ? ` (#${c.code})` : ''}`);
+  L.push(`التاريخ: ${today}`);
+  L.push('');
+  L.push(`إجمالي العقود: ${n(T.t)}`);
+  L.push(`المدفوع (بالمقدم): ${n(T.p)}`);
+  L.push(`المتبقي: ${n(T.r)}`);
+  if (T.l > 0) L.push(`⚠️ المتأخر: ${n(T.l)}`);
+  for (const p of plans) {
+    const ps = byPlan[p.id] || [];
+    L.push('');
+    L.push(`▪️ ${p.note || 'تقسيط'}${p.page_no ? ` — صفحة ${p.page_no}` : ''}`);
+    L.push(`   الإجمالي ${n(p.total_amount)} | المدفوع ${n(p.paid_total)} | المتبقي ${n(p.remaining)}`);
+    const late = ps.filter(x => x.status !== 'paid' && d10(x.due_date) < today);
+    if (late.length && p.status === 'active') {
+      L.push(`   متأخر ${n(p.late)} (${late.length} قسط):`);
+      for (const x of late.slice(0, 12)) L.push(`   - ${d10(x.due_date)}: ${n(x.amount)}`);
+      if (late.length > 12) L.push(`   … و${late.length - 12} أقساط تانية`);
+    }
+    const next = ps.find(x => x.status !== 'paid' && d10(x.due_date) >= today);
+    if (next && p.status === 'active') L.push(`   القسط الجاي: ${d10(next.due_date)} — ${n(next.amount)}`);
+  }
+  return L.join('\n');
+}
+
+async function shareText(text, title){
+  try {
+    if (navigator.share) { await navigator.share({ title, text }); return; }
+  } catch (e) { if (e && e.name === 'AbortError') return; }
+  try { await navigator.clipboard.writeText(text); alert('اتنسخ الكشف — الصقه في أي محادثة.'); }
+  catch { prompt('انسخ الكشف:', text); }
 }
 
 // ---------- Google Drive ----------
 function getToken(){
   return new Promise((resolve, reject) => {
-    const clientId = ls.get('gClientId') || DEFAULT_CLIENT_ID;
-    if (!clientId){ $('cfgBox').open = true; reject(new Error('حط الـ Client ID في الإعدادات الأول.')); return; }
+    const clientId = DEFAULT_CLIENT_ID;
     if (!window.google?.accounts?.oauth2){ reject(new Error('مكتبة جوجل لسه بتحمّل، جرّب تاني.')); return; }
     const tc = google.accounts.oauth2.initTokenClient({
       client_id: clientId, scope: SCOPE,
@@ -403,8 +446,6 @@ $('fileInput').onchange = async e => {
 $('btnDrive').onclick = listDrive;
 $('driveList').onclick = driveListClick;
 $('driveBack').onclick = listDrive;
-$('cfgClientId').value = ls.get('gClientId') || DEFAULT_CLIENT_ID;
-$('btnSaveCfg').onclick = () => { ls.set('gClientId', $('cfgClientId').value.trim()); $('cfgBox').open = false; showErr(''); };
 $('q').oninput = renderList;
 $('list').onclick = e => { const r = e.target.closest('[data-id]'); if (r) openCustomer(+r.dataset.id); };
 document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
